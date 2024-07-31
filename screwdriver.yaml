@@ -45,7 +45,7 @@ jobs:
   # - PR_BASE_BRANCH_NAME
   # - SD_BUILD_SHA
   branch:
-    requires: [ ~commit ]
+    requires: [ ~main ]
     steps:
       - teardown-test-branch: |
           remote="$(git remote)"
