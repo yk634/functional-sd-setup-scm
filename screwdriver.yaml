@@ -6,6 +6,7 @@ jobs:
     requires: [ ~commit ]
     steps:
       - echo: echo "This is a job for the hub within the workflow."
+
   # Testing with external-config
   # Environment variable to be tested
   # - SD_CONFIG_DIR
@@ -45,7 +46,7 @@ jobs:
   # - PR_BASE_BRANCH_NAME
   # - SD_BUILD_SHA
   branch:
-    requires: [ ~commit ]
+    requires: [ ~main ]
     steps:
       - teardown-test-branch: |
           remote="$(git remote)"
