@@ -6,17 +6,12 @@ shared:
   image: node:18
 
 jobs:
-  main:
-    requires: [ ~commit ]
-    steps:
-      - echo: echo "This is a job for the hub within the workflow."
-  
   # Testing with external-config
   # Environment variable to be tested
   # - SD_CONFIG_DIR
   # - CONFIG_URL
   external-config:
-    requires: [ ~main ]
+    requires: [ ~commit ]
     steps:
       - test-config-dir: |
           echo "SD_CONFIG_DIR: ${SD_CONFIG_DIR}"
@@ -41,7 +36,7 @@ jobs:
   # Environment variable to be tested
   # - SD_SOURCE_DIR
   source-dir:
-    requires: [ ~main, ~pr ]
+    requires: [ ~commit, ~pr ]
     steps:
       - teardown-test-source-dir: |
           current_dir="$(pwd)"
@@ -61,7 +56,7 @@ jobs:
   # - PR_BASE_BRANCH_NAME
   # - SD_BUILD_SHA
   branch:
-    requires: [ ~main ]
+    requires: [ ~commit ]
     steps:
       - teardown-test-branch: |
           remote="$(git remote)"
@@ -144,7 +139,7 @@ jobs:
   # - PR_BRANCH_NAME
   # - PR_BASE_BRANCH_NAME
   shallow-clone:
-    requires: [ ~main ]
+    requires: [ ~commit ]
     environment:
       GIT_SHALLOW_CLONE: true
       GIT_SHALLOW_CLONE_DEPTH: 10
@@ -178,7 +173,7 @@ jobs:
 
   # Test when GIT_SHALLOW_CLONE is enabled and SINGLE_BRANCH is enabled
   shallow-clone-single-branch:
-    requires: [ ~main ]
+    requires: [ ~commit ]
     environment:
       GIT_SHALLOW_CLONE: true
       GIT_SHALLOW_CLONE_SINGLE_BRANCH: true
@@ -201,7 +196,7 @@ jobs:
 
   # Test when GIT_SHALLOW_CLONE is enabled and both DEPTH and SINGLE_BRANCH are set
   shallow-clone-single-branch-with-depth:
-    requires: [ ~main ]
+    requires: [ ~commit ]
     environment:
       GIT_SHALLOW_CLONE: true
       GIT_SHALLOW_CLONE_DEPTH: 10
@@ -217,7 +212,7 @@ jobs:
   # - GIT_SHALLOW_CLONE_SINCE
   # - GIT_SHALLOW_CLONE_SINGLE_BRANCH
   shallow-clone-since-absolute:
-    requires: [ ~main ]
+    requires: [ ~commit ]
     environment:
       GIT_SHALLOW_CLONE: true
       GIT_SHALLOW_CLONE_DEPTH: 1
@@ -259,7 +254,7 @@ jobs:
   # - GIT_SHALLOW_CLONE_SINCE
   # - GIT_SHALLOW_CLONE_SINGLE_BRANCH
   shallow-clone-since-relative:
-    requires: [ ~main ]
+    requires: [ ~commit ]
     environment:
       GIT_SHALLOW_CLONE: true
       GIT_SHALLOW_CLONE_DEPTH: 1
@@ -274,7 +269,7 @@ jobs:
   # - GIT_SHALLOW_CLONE
   # - GIT_SHALLOW_CLONE_DEPTH
   not-shallow-clone:
-    requires: [ ~main, ~pr ]
+    requires: [ ~commit, ~pr ]
     environment:
       GIT_SHALLOW_CLONE: false
       GIT_SHALLOW_CLONE_DEPTH: 10
@@ -297,7 +292,7 @@ jobs:
   # - GIT_SHALLOW_CLONE
   # - GIT_SHALLOW_CLONE_SINGLE_BRANCH
   not-shallow-clone-single-branch:
-    requires: [ ~main, ~pr ]
+    requires: [ ~commit, ~pr ]
     environment:
       GIT_SHALLOW_CLONE: false
       GIT_SHALLOW_CLONE_SINGLE_BRANCH: false
