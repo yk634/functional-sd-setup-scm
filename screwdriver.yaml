@@ -6,6 +6,7 @@ jobs:
     requires: [ ~commit ]
     steps:
       - echo: echo "This is a job for the hub within the workflow."
+
   # Testing with external-config
   # Environment variable to be tested
   # - SD_CONFIG_DIR
