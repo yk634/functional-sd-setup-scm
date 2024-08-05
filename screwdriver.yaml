@@ -1,0 +1,299 @@
+shared:
+  image: node:18
+
+jobs:
+  # Testing with external-config
+  # Environment variable to be tested
+  # - SD_CONFIG_DIR
+  external-config:
+    requires: [ ~commit ]
+    steps:
+      - test-config-dir: |
+          echo "SD_CONFIG_DIR: ${SD_CONFIG_DIR}"
+          if [ -z "${SD_CONFIG_DIR}" ]; then
+            echo "success"
+          else
+            echo "failure: expected SD_CONFIG_DIR is empty"
+            exit 1
+          fi
+
+  # Test branch-related environment variables during normal build
+  # Environment variable to be tested
+  # - SD_SOURCE_DIR
+  source-dir:
+    requires: [ ~commit, ~pr ]
+    steps:
+      - teardown-test-source-dir: |
+          current_dir="$(pwd)"
+          echo "current_dir: ${current_dir}"
+          echo "SD_SOURCE_DIR: ${SD_SOURCE_DIR}"
+          if [ "${current_dir}" = "${SD_SOURCE_DIR}" ]; then
+            echo "success"
+          else
+            echo "failure: expected current_dir = SD_SOURCE_DIR"
+            exit 1
+          fi
+
+  # Test branch-related environment variables during normal build
+  # Environment variable to be tested
+  # - GIT_BRANCH
+  # - PR_BRANCH_NAME
+  # - PR_BASE_BRANCH_NAME
+  # - SD_BUILD_SHA
+  branch:
+    requires: [ ~commit ]
+    steps:
+      - teardown-test-branch: |
+          remote="$(git remote)"
+          current_branch="${remote}/$(git rev-parse --abbrev-ref HEAD)"
+          echo "current_branch: ${current_branch}"
+          echo "GIT_BRANCH: ${GIT_BRANCH}"
+          if [ "${current_branch}" = "${GIT_BRANCH}" ]; then
+            echo "success"
+          else
+            echo "failure: expected current_branch = GIT_BRANCH"
+            exit 1
+          fi
+      - teardown-test-branch-name: |
+          echo "PR_BRANCH_NAME: ${PR_BRANCH_NAME}"
+          echo "PR_BASE_BRANCH_NAME: ${PR_BASE_BRANCH_NAME}"
+          if [ -z "${PR_BRANCH_NAME}" ]; then
+            echo "success"
+          else
+            echo "failure: expected PR_BRANCH_NAME is empty"
+            exit 1
+          fi
+          if [ -z "${PR_BASE_BRANCH_NAME}" ]; then
+            echo "success"
+          else
+            echo "failure: expected PR_BASE_BRANCH_NAME is empty"
+            exit 1
+          fi
+      - teardown-test-sha: |
+          branch_sha="$(git rev-parse "${GIT_BRANCH}")"
+          echo "branch_sha: ${branch_sha}"
+          echo "SD_BUILD_SHA: ${SD_BUILD_SHA}"
+          if [ "${branch_sha}" = "${SD_BUILD_SHA}" ]; then
+            echo "success"
+          else
+            echo "failure: expected branch_sha = SD_BUILD_SHA"
+            exit 1
+          fi
+
+  # Test branch-related environment variables during pr build
+  # Environment variable to be tested
+  # - GIT_BRANCH
+  # - PR_BRANCH_NAME
+  # - PR_BASE_BRANCH_NAME
+  # - SD_BUILD_SHA
+  branch-pr:
+    requires: [ ~pr ]
+    steps:
+      - teardown-test-branch-pr: |
+          remote="$(git remote)"
+          current_branch="${remote}/$(git rev-parse --abbrev-ref HEAD)"
+          target_branch="${remote}/pr"
+          echo "current_branch: ${current_branch}"
+          echo "target_branch: ${target_branch}"
+          echo "GIT_BRANCH: ${GIT_BRANCH}"
+          if [ "${current_branch}" = "${target_branch}" ] && [ "${current_branch}" != "${GIT_BRANCH}" ]; then
+            echo "success"
+          else
+            echo "failure: expected current_branch = target_branch && current_branch != GIT_BRANCH"
+            exit 1
+          fi
+      - teardown-test-branch-name: |
+          echo "PR_BRANCH_NAME: ${PR_BRANCH_NAME}"
+          echo "PR_BASE_BRANCH_NAME: ${PR_BASE_BRANCH_NAME}"
+          if [ -n "${PR_BRANCH_NAME}" ]; then
+            echo "success"
+          else
+            echo "failure: expected PR_BRANCH_NAME is filled"
+            exit 1
+          fi
+          if [ -n "${PR_BASE_BRANCH_NAME}" ]; then
+            echo "success"
+          else
+            echo "failure: expected PR_BASE_BRANCH_NAME is filled"
+            exit 1
+          fi
+
+  # Test when GIT_SHALLOW_CLONE is enabled
+  # Environment variable to be tested
+  # - GIT_BRANCH
+  # - PR_BRANCH_NAME
+  # - PR_BASE_BRANCH_NAME
+  shallow-clone:
+    requires: [ ~commit ]
+    environment:
+      GIT_SHALLOW_CLONE: true
+      GIT_SHALLOW_CLONE_DEPTH: 10
+    steps:
+      - teardown-test-shallow-clone: &teardown-test-shallow-clone |
+          local_depth="$(git rev-list --count HEAD)"
+          echo "local_depth: ${local_depth}"
+          echo "GIT_SHALLOW_CLONE_DEPTH: ${GIT_SHALLOW_CLONE_DEPTH}"
+          if [ "${local_depth}" -eq "${GIT_SHALLOW_CLONE_DEPTH}" ]; then
+            echo "success equal"
+          elif [ "${local_depth}" -gt "${GIT_SHALLOW_CLONE_DEPTH}" ]; then
+            remote="$(git remote)"
+            branch="$(echo "${GIT_BRANCH}" | sed "s|^${remote}/||")"
+            git fetch --unshallow "${remote}" "${branch}"
+            fetched_local_depth="$(git rev-list --count HEAD)"
+            echo "fetched_local_depth: ${fetched_local_depth}"
+            if [ "${local_depth}" -ne "${fetched_local_depth}" ]; then
+              echo "success greater than"
+            else
+              echo "failure: expected local_depth = fetched_local_depth"
+              echo "local_depth: ${local_depth}"
+              echo "fetched_local_depth: ${fetched_local_depth}"
+              exit 1
+            fi
+          else
+            echo "failure: expected local_depth >= GIT_SHALLOW_CLONE_DEPTH"
+            echo "local_depth: ${local_depth}"
+            echo "GIT_SHALLOW_CLONE_DEPTH: ${GIT_SHALLOW_CLONE_DEPTH}"
+            exit 1
+          fi
+
+  # Test when GIT_SHALLOW_CLONE is enabled and SINGLE_BRANCH is enabled
+  shallow-clone-single-branch:
+    requires: [ ~commit ]
+    environment:
+      GIT_SHALLOW_CLONE: true
+      GIT_SHALLOW_CLONE_SINGLE_BRANCH: true
+    steps:
+      - teardown-test-n-branches: &teardown-test-n-branches |
+          current_branch="$(git rev-parse --abbrev-ref HEAD)"
+          all_branches="$(git branch -a)"
+          local_branches="$(echo "${all_branches}" | (grep -E -v "^\s*remotes/origin/${current_branch}$" || true) | (grep -E -v "^\s*remotes/origin/HEAD" || true))"
+          n_local_branches="$(echo "${local_branches}" | wc -l)"
+          echo "current_branch: ${current_branch}"
+          echo -e "all_branches: \n${all_branches}"
+          echo -e "local_branches: \n${local_branches}"
+          echo "n_local_branches: ${n_local_branches}"
+          if [ "${n_local_branches}" -eq 1 ]; then
+            echo "success"
+          else
+            echo "failure: expected n_local_branches = 1"
+            exit 1
+          fi
+
+  # Test when GIT_SHALLOW_CLONE is enabled and both DEPTH and SINGLE_BRANCH are set
+  shallow-clone-single-branch-with-depth:
+    requires: [ ~commit ]
+    environment:
+      GIT_SHALLOW_CLONE: true
+      GIT_SHALLOW_CLONE_DEPTH: 10
+      GIT_SHALLOW_CLONE_SINGLE_BRANCH: true
+    steps:
+      - teardown-test-n-branches: *teardown-test-n-branches
+      - teardown-test-shallow-clone: *teardown-test-shallow-clone
+
+  # Test when SHALLOW_CLONE is enabled and SINCE is set to absolute date and time
+  # Environment variable to be tested
+  # - GIT_SHALLOW_CLONE
+  # - GIT_SHALLOW_CLONE_DEPTH
+  # - GIT_SHALLOW_CLONE_SINCE
+  # - GIT_SHALLOW_CLONE_SINGLE_BRANCH
+  shallow-clone-since-absolute:
+    requires: [ ~commit ]
+    environment:
+      GIT_SHALLOW_CLONE: true
+      GIT_SHALLOW_CLONE_DEPTH: 1
+      GIT_SHALLOW_CLONE_SINCE: '2023-07-12'
+      GIT_SHALLOW_CLONE_SINGLE_BRANCH: true
+    steps:
+      - teardown-test-shallow-since: &teardown-test-shallow-since |
+          oldest_commit_sha=$(git rev-list --max-parents=0 HEAD)
+          oldest_commit_date="$(git show -s --format='%ci' "${oldest_commit_sha}")"
+          git_shallow_clone_since_date="$(date -d "${GIT_SHALLOW_CLONE_SINCE}" '+%Y-%m-%d %H:%M:%S %z')"
+          oldest_commit_epoch=$(date -d "${oldest_commit_date}" +%s)
+          git_shallow_clone_since_epoch=$(date -d "${git_shallow_clone_since_date}" +%s)
+          echo "oldest_commit_sha: ${oldest_commit_sha}"
+          echo "oldest_commit_date: ${oldest_commit_date}"
+          echo "git_shallow_clone_since_date: ${git_shallow_clone_since_date}"
+          echo "oldest_commit_epoch: ${oldest_commit_epoch}"
+          echo "git_shallow_clone_since_epoch: ${git_shallow_clone_since_epoch}"
+          if [ "${oldest_commit_epoch}" -ge "${git_shallow_clone_since_epoch}" ]; then
+            echo "success"
+          else
+            echo "failure: expected oldest_commit_epoch >= git_shallow_clone_since_epoch"
+            exit 1
+          fi
+      - teardown-test-ignore-depth: &teardown-test-ignore-depth |
+          local_depth="$(git rev-list --count HEAD)"
+          echo "local_depth: ${local_depth}"
+          echo "GIT_SHALLOW_CLONE_DEPTH: ${GIT_SHALLOW_CLONE_DEPTH}"
+          if [ "${local_depth}" -gt "${GIT_SHALLOW_CLONE_DEPTH}" ]; then
+            echo "success"
+          else
+            echo "failure: expected local_depth > GIT_SHALLOW_CLONE_DEPTH"
+            exit 1
+          fi
+
+  # Test when SHALLOW_CLONE is enabled and SINCE is set to relative date and time
+  # Environment variable to be tested
+  # - GIT_SHALLOW_CLONE
+  # - GIT_SHALLOW_CLONE_DEPTH
+  # - GIT_SHALLOW_CLONE_SINCE
+  # - GIT_SHALLOW_CLONE_SINGLE_BRANCH
+  shallow-clone-since-relative:
+    requires: [ ~commit ]
+    environment:
+      GIT_SHALLOW_CLONE: true
+      GIT_SHALLOW_CLONE_DEPTH: 1
+      GIT_SHALLOW_CLONE_SINCE: '1 hours ago'
+      GIT_SHALLOW_CLONE_SINGLE_BRANCH: true
+    steps:
+      - teardown-test-shallow-since: *teardown-test-shallow-since
+      - teardown-test-ignore-depth: *teardown-test-ignore-depth
+
+  # Test when SHALLOW_CLONE is disabled
+  # Environment variable to be tested
+  # - GIT_SHALLOW_CLONE
+  # - GIT_SHALLOW_CLONE_DEPTH
+  not-shallow-clone:
+    requires: [ ~commit, ~pr ]
+    environment:
+      GIT_SHALLOW_CLONE: false
+      GIT_SHALLOW_CLONE_DEPTH: 10
+    steps:
+      - teardown-test-shallow-clone: |
+          local_depth="$(git rev-list --count HEAD)"
+          echo "local_depth: ${local_depth}"
+          echo "GIT_SHALLOW_CLONE_DEPTH: ${GIT_SHALLOW_CLONE_DEPTH}"
+          if [ "${local_depth}" -gt "${GIT_SHALLOW_CLONE_DEPTH}" ]; then
+            echo "success equal"
+          else
+            echo "failure: expected local_depth >= GIT_SHALLOW_CLONE_DEPTH"
+            echo "local_depth: ${local_depth}"
+            echo "GIT_SHALLOW_CLONE_DEPTH: ${GIT_SHALLOW_CLONE_DEPTH}"
+            exit 1
+          fi
+
+  # Test when SHALLOW_CLONE is disabled
+  # Environment variable to be tested
+  # - GIT_SHALLOW_CLONE
+  # - GIT_SHALLOW_CLONE_SINGLE_BRANCH
+  not-shallow-clone-single-branch:
+    requires: [ ~commit, ~pr ]
+    environment:
+      GIT_SHALLOW_CLONE: false
+      GIT_SHALLOW_CLONE_SINGLE_BRANCH: false
+    steps:
+      - teardown-test-n-branches: |
+          current_branch="$(git rev-parse --abbrev-ref HEAD)"
+          all_branches="$(git branch -a)"
+          local_branches="$(echo "${all_branches}" | (grep -E -v "^\s*remotes/origin/${current_branch}$" || true) | (grep -E -v "^\s*remotes/origin/HEAD" || true))"
+          n_local_branches="$(echo "${local_branches}" | wc -l)"
+          echo "current_branch: ${current_branch}"
+          echo -e "all_branches: \n${all_branches}"
+          echo -e "local_branches: \n${local_branches}"
+          echo "n_local_branches: ${n_local_branches}"
+          if [ "${n_local_branches}" -gt 1 ]; then
+            echo "success"
+          else
+            echo "failure: expected n_local_branches = 1"
+            exit 1
+          fi
