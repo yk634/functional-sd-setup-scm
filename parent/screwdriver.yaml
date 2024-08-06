@@ -1,6 +1,6 @@
 childPipelines:
   scmUrls:
-    - git@github.com:yk634/functional-sd-setup-scm.git#master:child
+    - git@github.com:screwdriver-cd-test/functional-sd-setup-scm.git#master:child
 
 shared:
   image: node:18
